@@ -22,6 +22,12 @@ For the circular image chart:
 python src\make_pedigree_image.py
 ```
 
+To generate a rotating GIF from the circle image:
+
+```powershell
+python src\make_circle_gif.py <PK>_circle.png
+```
+
 You can also pass a PK and output path:
 
 ```powershell

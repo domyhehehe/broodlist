@@ -3,6 +3,7 @@ import csv
 import math
 import os
 import re
+import textwrap
 
 
 def load_rows(csv_path):
@@ -170,9 +171,6 @@ def place_wedge_text(
         rotation = angle_deg
     else:
         rotation = angle_deg - 90
-    left_half = 90 < angle_deg < 270
-    if gen < 5 and left_half:
-        rotation += 180
 
     ring_thickness = max(r_outer - r_inner, 0.001)
     arc_length = max(angle_range * radius_mid, 0.001)
@@ -294,8 +292,14 @@ def draw_chart(pk, by_pk, max_depth, out_path):
             return
 
         mid = (angle_start + angle_end) / 2
-        sire_range = (mid, angle_end)
-        dam_range = (angle_start, mid)
+        # Left half (positive angles): top = dam, bottom = sire.
+        # Right half (negative to positive): top = sire, bottom = dam.
+        if angle_start > 0 and angle_end > 0:
+            sire_range = (mid, angle_end)
+            dam_range = (angle_start, mid)
+        else:
+            sire_range = (mid, angle_end)
+            dam_range = (angle_start, mid)
         if sire:
             draw_wedge(sire, gen + 1, sire_range[0], sire_range[1])
         if dam:
@@ -320,7 +324,15 @@ def draw_chart(pk, by_pk, max_depth, out_path):
     raw_name = (data.get("Horse Name") or "").strip() or pk
     year = (data.get("Year") or "").strip()
     center_label = f"{raw_name} {year}".strip()
-    ax.text(0, 1.14, center_label, ha="center", va="bottom", fontsize=12, weight="bold")
+    title_text = ax.text(
+        0,
+        1.14,
+        center_label,
+        ha="center",
+        va="bottom",
+        fontsize=12,
+        weight="bold",
+    )
 
     if inbred_pks:
         summary_parts = []
@@ -340,13 +352,36 @@ def draw_chart(pk, by_pk, max_depth, out_path):
     else:
         summary = "No inbreeding detected within selected generations."
 
-    ax.text(0, -1.12, summary, ha="center", va="top", fontsize=10, wrap=True)
+    fig_width_in = fig.get_size_inches()[0]
+    max_chars = max(60, int(fig_width_in * 10))
+    parts = summary.split(" / ")
+    lines = []
+    current = ""
+    for part in parts:
+        candidate = part if not current else f"{current} / {part}"
+        if len(candidate) > max_chars and current:
+            lines.append(current)
+            current = part
+        else:
+            current = candidate
+    if current:
+        lines.append(current)
+    summary_wrapped = "\n".join(lines)
+    summary_text = ax.text(0, -1.12, summary_wrapped, ha="center", va="top", fontsize=10)
 
     radius_limit = 1.05 + max_extra
     ax.set_xlim(-radius_limit, radius_limit)
     ax.set_ylim(-1.4 - max_extra, 1.35 + max_extra)
 
     fig.savefig(out_path, dpi=200, bbox_inches="tight")
+    circle_path = os.path.splitext(out_path)[0] + "_circle.png"
+    summary_text.set_visible(False)
+    title_text.set_visible(False)
+    radius_limit = 1.05 + max_extra
+    fig.set_size_inches(fig_size, fig_size)
+    ax.set_xlim(-radius_limit, radius_limit)
+    ax.set_ylim(-radius_limit, radius_limit)
+    fig.savefig(circle_path, dpi=200, bbox_inches="tight", pad_inches=0)
     plt.close(fig)
 
 
