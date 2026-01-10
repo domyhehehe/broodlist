@@ -1,6 +1,6 @@
 ﻿# Bloodline Pedigree Generator
 
-Create an Excel pedigree file from `bloodline.csv` by entering a PrimaryKey.
+Create Excel and image pedigrees from `bloodline.csv` by entering a PrimaryKey.
 
 ## Setup
 
@@ -14,6 +14,12 @@ pip install -r requirements.txt
 
 ```powershell
 python src\make_pedigree.py
+```
+
+For the circular image chart:
+
+```powershell
+python src\make_pedigree_image.py
 ```
 
 You can also pass a PK and output path:
@@ -31,3 +37,9 @@ The Excel file contains a right-expanding pedigree chart:
 - Each ancestor displayed as `Horse Name Year (PrimaryKey)`
 - You will be prompted for max generations (default: 5)
 - Inbreeding summary is written to the top row; inbred ancestors get a red border
+
+The image file contains a circular pedigree chart:
+
+- Sire side on the left half, dam side on the right half
+- Inner rings are closer generations; center shows the target horse
+- Inbreeding summary is written above the chart; inbred ancestors get a red outline
