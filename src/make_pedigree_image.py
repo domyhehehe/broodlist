@@ -425,14 +425,14 @@ def main():
 
     gen = args.gen
     if gen is None:
-        gen_input = input("Enter generations (default 5): ").strip()
+        gen_input = input("Enter generations (default 9): ").strip()
         if gen_input:
             try:
                 gen = int(gen_input)
             except ValueError as exc:
                 raise SystemExit("Generations must be an integer.") from exc
         else:
-            gen = 5
+            gen = 9
     if gen < 1:
         raise SystemExit("Generations must be >= 1.")
 
