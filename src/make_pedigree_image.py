@@ -189,6 +189,9 @@ def place_wedge_text(
     scale_rad = ring_thickness / 0.08
     scale = min(1.0, scale_arc, scale_rad)
     font_size = max(4, base_size * scale)
+    left_half = 90 < angle_deg < 270
+    if gen >= 5 and left_half:
+        angle_mid -= 0.004
     x, y = polar_to_xy(radius_mid, angle_mid)
     ha = "center"
     ax.text(
@@ -233,15 +236,16 @@ def draw_chart(pk, by_pk, max_depth, out_path):
 
     extra_per_gen = 0.012
     max_extra = extra_per_gen * max(0, max_depth - 7)
+    radial_gamma = 1.3/ (1.0 + max_extra)
 
     def ring_outer(gen):
-        base = gen / max_depth
+        base = (gen / max_depth) ** radial_gamma
         if gen >= 8:
             return base + extra_per_gen * (gen - 7)
         return base
 
     def ring_inner(gen):
-        base = (gen - 1) / max_depth
+        base = ((gen - 1) / max_depth) ** radial_gamma
         if gen >= 8:
             return base + extra_per_gen * (gen - 8)
         return base
