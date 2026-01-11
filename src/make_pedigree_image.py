@@ -92,14 +92,16 @@ def format_horse_label(
 def collect_inbreeding(pk, by_pk, max_depth):
     occurrences = {}
 
-    def walk(node_pk, gen, path, visiting):
+    def walk(node_pk, gen, path, visiting, side):
         if gen > max_depth:
             return
         if node_pk in visiting:
             return
         visiting.add(node_pk)
         new_path = path + [node_pk]
-        occurrences.setdefault(node_pk, []).append({"gen": gen, "path": new_path})
+        occurrences.setdefault(node_pk, []).append(
+            {"gen": gen, "path": new_path, "side": side}
+        )
         data = by_pk.get(node_pk)
         if data is None:
             visiting.remove(node_pk)
@@ -108,9 +110,9 @@ def collect_inbreeding(pk, by_pk, max_depth):
         dam = (data.get("Dam") or "").strip()
         if gen < max_depth:
             if sire:
-                walk(sire, gen + 1, new_path, visiting)
+                walk(sire, gen + 1, new_path, visiting, side)
             if dam:
-                walk(dam, gen + 1, new_path, visiting)
+                walk(dam, gen + 1, new_path, visiting, side)
         visiting.remove(node_pk)
 
     data = by_pk.get(pk)
@@ -118,11 +120,12 @@ def collect_inbreeding(pk, by_pk, max_depth):
         sire = (data.get("Sire") or "").strip()
         dam = (data.get("Dam") or "").strip()
         if sire:
-            walk(sire, 1, [], set())
+            walk(sire, 1, [], set(), "Sire")
         if dam:
-            walk(dam, 1, [], set())
+            walk(dam, 1, [], set(), "Dam")
 
     inbred = {}
+    inbred_types = {}
     for ancestor, occs in occurrences.items():
         if len(occs) < 2:
             continue
@@ -130,7 +133,14 @@ def collect_inbreeding(pk, by_pk, max_depth):
         percentage = sum((0.5**g) for g in gens) * 100.0
         gens_sorted = sorted(gens, reverse=True)
         paths = [occ["path"] for occ in occs]
+        sides = {occ["side"] for occ in occs}
         inbred[ancestor] = {"gens": gens_sorted, "percentage": percentage, "paths": paths}
+        if sides == {"Sire"}:
+            inbred_types[ancestor] = "sire"
+        elif sides == {"Dam"}:
+            inbred_types[ancestor] = "dam"
+        else:
+            inbred_types[ancestor] = "both"
 
     subsumed = set()
     candidates = list(inbred.keys())
@@ -150,7 +160,7 @@ def collect_inbreeding(pk, by_pk, max_depth):
                 subsumed.add(ancestor)
                 break
 
-    return inbred, subsumed
+    return inbred, subsumed, inbred_types
 
 
 def polar_to_xy(radius, angle_rad):
@@ -205,7 +215,7 @@ def draw_chart(pk, by_pk, max_depth, out_path):
     if max_depth <= 0:
         raise SystemExit("Generations must be at least 1 for the circular chart.")
 
-    inbred, subsumed = collect_inbreeding(pk, by_pk, max_depth)
+    inbred, subsumed, inbred_types = collect_inbreeding(pk, by_pk, max_depth)
     inbred_pks = set(inbred.keys()) - subsumed
 
     fig_size = max(8, 2 + max_depth * 1.3)
@@ -217,7 +227,9 @@ def draw_chart(pk, by_pk, max_depth, out_path):
     dam_fill = "#FCE4EC"
     unknown_fill = "#F2F2F2"
     edge_default = "#FFFFFF"
-    edge_inbred = "#FF0000"
+    edge_inbred_dam = "#FF0000"
+    edge_inbred_sire = "#1F4E9E"
+    edge_inbred_both = "#800080"
 
     extra_per_gen = 0.012
     max_extra = extra_per_gen * max(0, max_depth - 7)
@@ -253,10 +265,19 @@ def draw_chart(pk, by_pk, max_depth, out_path):
             theta2=math.degrees(angle_end),
             width=r_outer - r_inner,
             facecolor=face,
-            edgecolor=edge_inbred if node_pk in inbred_pks else edge_default,
-            linewidth=1.2 if node_pk in inbred_pks else 0.5,
+            edgecolor=edge_default,
+            linewidth=0.5,
         )
         ax.add_patch(wedge)
+        if node_pk in inbred_pks:
+            inbred_type = inbred_types.get(node_pk)
+            if inbred_type == "sire":
+                wedge.set_edgecolor(edge_inbred_sire)
+            elif inbred_type == "dam":
+                wedge.set_edgecolor(edge_inbred_dam)
+            else:
+                wedge.set_edgecolor(edge_inbred_both)
+            wedge.set_linewidth(1.2)
 
         if gen >= 8:
             label = format_horse_label(
