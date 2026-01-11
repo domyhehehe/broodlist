@@ -249,9 +249,9 @@ def draw_chart(pk, by_pk, max_depth, out_path):
     def draw_wedge(node_pk, gen, angle_start, angle_end):
         data = by_pk.get(node_pk)
         sex = (data.get("Sex") or "").strip().upper() if data else ""
-        if sex == "M":
+        if sex == "H" or sex == "G" or sex == "C":
             face = sire_fill
-        elif sex == "F":
+        elif sex == "M" or sex == "F":
             face = dam_fill
         else:
             face = unknown_fill
@@ -296,7 +296,7 @@ def draw_chart(pk, by_pk, max_depth, out_path):
                 single_line=False,
             )
 
-        font_size = max(3, 11 / (2 ** (gen - 1)))
+        font_size = max(0.3, 11 / (2 ** (gen - 1)))
         place_wedge_text(
             ax, label, r_inner, r_outer, angle_start, angle_end, font_size, gen
         )
@@ -365,7 +365,9 @@ def draw_chart(pk, by_pk, max_depth, out_path):
                 name = strip_country((data.get("Horse Name") or "").strip())
             else:
                 name = ancestor_pk
-            gens_text = " x ".join(str(g) for g in inbred[ancestor_pk]["gens"])
+            gens_text = " x ".join(
+                str(g) for g in sorted(inbred[ancestor_pk]["gens"])
+            )
             summary_parts.append(
                 f"{name} {inbred[ancestor_pk]['percentage']:.2f}% {gens_text}"
             )
@@ -387,7 +389,20 @@ def draw_chart(pk, by_pk, max_depth, out_path):
             current = candidate
     if current:
         lines.append(current)
-    summary_wrapped = "\n".join(lines)
+    forced_lines = []
+    for line in lines:
+        if len(line) <= max_chars:
+            forced_lines.append(line)
+            continue
+        forced_lines.extend(
+            textwrap.wrap(
+                line,
+                width=max_chars,
+                break_long_words=True,
+                break_on_hyphens=False,
+            )
+        )
+    summary_wrapped = "\n".join(forced_lines)
     summary_text = ax.text(0, -1.12, summary_wrapped, ha="center", va="top", fontsize=10)
 
     radius_limit = 1.05 + max_extra
