@@ -163,6 +163,124 @@ def collect_inbreeding(pk, by_pk, max_depth):
     return inbred, subsumed, inbred_types
 
 
+def build_inbreeding_calculator(by_pk):
+    depth_cache = {}
+    f_cache = {}
+    kin_cache = {}
+    depth_stack = set()
+    f_stack = set()
+    kin_stack = set()
+
+    def is_unknown(pk):
+        return not pk
+
+    def has_known_parents(pk):
+        if is_unknown(pk):
+            return False
+        data = by_pk.get(pk)
+        if data is None:
+            return False
+        sire = (data.get("Sire") or "").strip()
+        dam = (data.get("Dam") or "").strip()
+        if not sire or not dam:
+            return False
+        if sire == pk or dam == pk:
+            return False
+        if sire not in by_pk or dam not in by_pk:
+            return False
+        return True
+
+    def get_depth(pk):
+        if is_unknown(pk) or pk not in by_pk:
+            return 0
+        if pk in depth_cache:
+            return depth_cache[pk]
+        if pk in depth_stack:
+            return 0
+        depth_stack.add(pk)
+        if has_known_parents(pk):
+            data = by_pk[pk]
+            depth = 1 + max(
+                get_depth((data.get("Sire") or "").strip()),
+                get_depth((data.get("Dam") or "").strip()),
+            )
+        else:
+            depth = 0
+        depth_stack.remove(pk)
+        depth_cache[pk] = depth
+        return depth
+
+    def get_inbreeding(pk):
+        if pk in f_cache:
+            return f_cache[pk]
+        if pk in f_stack:
+            return 0.0
+        f_stack.add(pk)
+        if not has_known_parents(pk):
+            res = 0.0
+        else:
+            data = by_pk[pk]
+            res = get_kinship(
+                (data.get("Sire") or "").strip(),
+                (data.get("Dam") or "").strip(),
+            )
+        f_stack.remove(pk)
+        f_cache[pk] = res
+        return res
+
+    def get_kinship(a, b):
+        if is_unknown(a) or is_unknown(b):
+            return 0.0
+        if a not in by_pk or b not in by_pk:
+            return 0.0
+        key = (a, b) if a <= b else (b, a)
+        if key in kin_cache:
+            return kin_cache[key]
+
+        guard = f"{key[0]}|{key[1]}"
+        if guard in kin_stack:
+            return 0.0
+        kin_stack.add(guard)
+
+        if a == b:
+            res = 0.5 * (1.0 + get_inbreeding(a))
+        else:
+            u, v = a, b
+            du, dv = get_depth(u), get_depth(v)
+            ku, kv = has_known_parents(u), has_known_parents(v)
+
+            def need_swap():
+                if du < dv:
+                    return True
+                if du > dv:
+                    return False
+                if not ku and kv:
+                    return True
+                if ku and not kv:
+                    return False
+                return u > v
+
+            if need_swap():
+                u, v = v, u
+                du, dv = dv, du
+                ku, kv = kv, ku
+
+            if not has_known_parents(u):
+                res = 0.0
+            else:
+                data_u = by_pk[u]
+                res = 0.5 * (
+                    get_kinship((data_u.get("Sire") or "").strip(), v)
+                    + get_kinship((data_u.get("Dam") or "").strip(), v)
+                )
+
+        kin_stack.remove(guard)
+        kin_cache[key] = res
+        return res
+
+    return get_inbreeding
+
+
 def polar_to_xy(radius, angle_rad):
     return radius * math.cos(angle_rad), radius * math.sin(angle_rad)
 
@@ -348,7 +466,10 @@ def draw_chart(pk, by_pk, max_depth, out_path):
     data = by_pk.get(pk) or {}
     raw_name = (data.get("Horse Name") or "").strip() or pk
     year = (data.get("Year") or "").strip()
-    center_label = f"{raw_name} {year}".strip()
+    get_inbreeding = build_inbreeding_calculator(by_pk)
+    coef = get_inbreeding(pk)
+    coef_text = f"F={coef * 100:.2f}%"
+    center_label = f"{raw_name} {year} {coef_text}".strip()
     title_text = ax.text(
         0,
         1.14,
@@ -414,14 +535,14 @@ def draw_chart(pk, by_pk, max_depth, out_path):
     ax.set_ylim(-1.4 - max_extra, 1.35 + max_extra)
 
     fig.savefig(out_path, dpi=200, bbox_inches="tight")
-    circle_path = os.path.splitext(out_path)[0] + "_circle.png"
-    summary_text.set_visible(False)
-    title_text.set_visible(False)
-    radius_limit = 1.05 + max_extra
-    fig.set_size_inches(fig_size, fig_size)
-    ax.set_xlim(-radius_limit, radius_limit)
-    ax.set_ylim(-radius_limit, radius_limit)
-    fig.savefig(circle_path, dpi=200, bbox_inches="tight", pad_inches=0)
+    # circle_path = os.path.splitext(out_path)[0] + "_circle.png"
+    # summary_text.set_visible(False)
+    # title_text.set_visible(False)
+    # radius_limit = 1.05 + max_extra
+    # fig.set_size_inches(fig_size, fig_size)
+    # ax.set_xlim(-radius_limit, radius_limit)
+    # ax.set_ylim(-radius_limit, radius_limit)
+    # fig.savefig(circle_path, dpi=200, bbox_inches="tight", pad_inches=0)
     plt.close(fig)
 
 
