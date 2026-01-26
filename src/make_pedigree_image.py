@@ -281,6 +281,51 @@ def build_inbreeding_calculator(by_pk):
     return get_inbreeding
 
 
+def build_blood_fraction_calculator(by_pk, ancestor_pk):
+    memo = {}
+    visiting = set()
+
+    def blood_fraction(pk):
+        if not pk or pk not in by_pk:
+            return 0.0
+        if pk == ancestor_pk:
+            return 1.0
+        if pk in memo:
+            return memo[pk]
+        if pk in visiting:
+            return 0.0
+        visiting.add(pk)
+        data = by_pk.get(pk)
+        if data is None:
+            visiting.remove(pk)
+            memo[pk] = 0.0
+            return 0.0
+        sire = (data.get("Sire") or "").strip()
+        dam = (data.get("Dam") or "").strip()
+        if not sire and not dam:
+            visiting.remove(pk)
+            memo[pk] = 0.0
+            return 0.0
+        if sire == pk:
+            sire = ""
+        if dam == pk:
+            dam = ""
+        frac = 0.5 * (blood_fraction(sire) + blood_fraction(dam))
+        visiting.remove(pk)
+        memo[pk] = frac
+        return frac
+
+    return blood_fraction
+
+
+def format_trunc_percent(value, decimals):
+    if decimals < 0:
+        decimals = 0
+    factor = 10 ** decimals
+    truncated = math.floor(value * factor) / factor
+    return f"{truncated:.{decimals}f}%"
+
+
 def polar_to_xy(radius, angle_rad):
     return radius * math.cos(angle_rad), radius * math.sin(angle_rad)
 
@@ -324,7 +369,7 @@ def place_wedge_text(
     )
 
 
-def draw_chart(pk, by_pk, max_depth, out_path):
+def draw_chart(pk, by_pk, max_depth, out_path, blood_pks=None):
     try:
         import matplotlib.pyplot as plt
         from matplotlib.patches import Wedge
@@ -469,7 +514,15 @@ def draw_chart(pk, by_pk, max_depth, out_path):
     get_inbreeding = build_inbreeding_calculator(by_pk)
     coef = get_inbreeding(pk)
     coef_text = f"F={coef * 100:.2f}%"
-    center_label = f"{raw_name} {year} {coef_text}".strip()
+    label_parts = [raw_name, year, coef_text]
+    for ancestor_pk in (blood_pks or []):
+        if ancestor_pk not in by_pk:
+            continue
+        get_blood = build_blood_fraction_calculator(by_pk, ancestor_pk)
+        blood_value = get_blood(pk) * 100.0
+        blood_text = f"{ancestor_pk}={format_trunc_percent(blood_value, 4)}"
+        label_parts.append(blood_text)
+    center_label = " ".join(part for part in label_parts if part).strip()
     title_text = ax.text(
         0,
         1.14,
@@ -567,6 +620,11 @@ def parse_args():
         default=None,
         help="Max generations (default: prompt, fallback to 5)",
     )
+    parser.add_argument(
+        "--blood",
+        default="",
+        help="Comma-separated PrimaryKey list for blood fraction (e.g. herod,eclipse)",
+    )
     return parser.parse_args()
 
 
@@ -599,8 +657,25 @@ def main():
 
     max_depth = clamp_depth(pk, by_pk, gen)
 
+    blood_pks = []
+    blood_input = args.blood
+    if not blood_input:
+        blood_input = input(
+            "Enter blood PKs (comma-separated, default none): "
+        ).strip()
+    if blood_input:
+        seen = set()
+        for raw in blood_input.split(","):
+            token = raw.strip()
+            if not token:
+                continue
+            if token in seen:
+                continue
+            seen.add(token)
+            blood_pks.append(token)
+
     out_path = args.out or f"{pk}.png"
-    draw_chart(pk, by_pk, max_depth, out_path)
+    draw_chart(pk, by_pk, max_depth, out_path, blood_pks=blood_pks)
     print(f"Wrote: {out_path}")
 
 
